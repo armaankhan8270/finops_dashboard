@@ -1,0 +1,9 @@
+# .streamlit/secrets.toml
+[connections.snowflake]
+account = "your_account_identifier" # e.g., "xy12345.us-east-1" or just "xy12345"
+user = "YOUR_USER_NAME"
+password = "YOUR_PASSWORD"
+role = "YOUR_ROLE" # e.g., "SYSADMIN" or "ACCOUNTADMIN"
+warehouse = "YOUR_WAREHOUSE" # e.g., "COMPUTE_WH"
+database = "SNOWFLAKE" # Or your custom database
+schema = "ACCOUNT_USAGE" # Or your custom schema if you want to use it directly
