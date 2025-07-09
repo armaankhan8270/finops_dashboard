@@ -1,4 +1,4 @@
-# finops_dashboard/src/pages/user_360_page.py
+# finops_dashboard/src/pages/user_360_page.py (Corrected calls)
 
 import streamlit as st
 import pandas as pd
@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 from src.utils import handle_errors
 from src.ui_elements import UIElements
 from src.filter_manager import FilterManager
-from src.data_fetcher import DataFetcher
-from src.data_processor import DataProcessor
+from src.data_fetcher import DataFetcher # Make sure DataFetcher is imported
+from src.data_processor import DataProcessor # Still need DataProcessor for other methods
 from src.metric_builder import MetricBuilder
 from src.chart_builder import ChartBuilder
 from src.config import APP_TITLE # Re-import for consistency if needed, though UIElements handles app-wide title
@@ -56,22 +56,29 @@ class User360Page:
 
         # Calculate previous period dates for delta comparison
         start_date_obj = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-        end_date_obj = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-        period_length = (end_date_obj - start_date_obj).days # Excludes the end_date itself
+        # end_date_obj is inclusive for the current period, so we need to subtract one day for accurate length
+        end_date_obj = datetime.strptime(end_date_str, "%Y-%m-%d").date() - timedelta(days=1)
+        period_length = (end_date_obj - start_date_obj).days + 1 # Calculate inclusive length
 
         prev_end_date_obj = start_date_obj
         prev_start_date_obj = start_date_obj - timedelta(days=period_length)
         
         query_params_prev = {
-            "prev_start_date": prev_start_date_obj.strftime("%Y-%m-%d"),
-            "prev_end_date": prev_end_date_obj.strftime("%Y-%m-%d"),
+            "start_date": prev_start_date_obj.strftime("%Y-%m-%d"), # Renamed from prev_start_date for consistency in DataFetcher
+            "end_date": prev_end_date_obj.strftime("%Y-%m-%d"),     # Renamed from prev_end_date for consistency in DataFetcher
             "user_name": selected_user
         }
+        # Adjust prev_end_date_obj for the DataFetcher query that expects exclusive end date
+        # If the query expects 'end_date' to be exclusive (e.g., < 'end_date'), then we need to add 1 day to it here
+        # Assuming your queries in user_360_queries.py use '< {end_date}', if prev_end_date_obj is '2023-01-01',
+        # the query should effectively run up to '2023-01-01 23:59:59', which means the string should be '2023-01-02'.
+        query_params_prev["end_date"] = (prev_end_date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+
 
         st.subheader("Selected Filters:")
         filter_display_col1, filter_display_col2 = st.columns([1,2])
         with filter_display_col1:
-            st.info(f"**Period:** {start_date_str} to {end_date_str}")
+            st.info(f"**Period:** {start_date_str} to {end_date_obj.strftime('%Y-%m-%d')}") # Show actual end date for current period
         with filter_display_col2:
             st.info(f"**User:** {selected_user if selected_user else 'All Users'}")
         
@@ -87,11 +94,8 @@ class User360Page:
 
         with st.spinner("Fetching overview metrics..."):
             # Total Credits Used
-            total_credits_df = DataFetcher.fetch_data(session, "user_360.total_credit_usage", query_params)
-            total_credits = DataProcessor.fetch_metric_value(total_credits_df) # Renamed to use DataProcessor
-            
-            total_credits_prev_df = DataFetcher.fetch_data(session, "user_360.total_credit_usage_previous_period", query_params_prev)
-            total_credits_prev = DataProcessor.fetch_metric_value(total_credits_prev_df) # Renamed to use DataProcessor
+            total_credits = DataFetcher.fetch_metric_value(session, "user_360.total_credit_usage", query_params)
+            total_credits_prev = DataFetcher.fetch_metric_value(session, "user_360.total_credit_usage_previous_period", query_params_prev)
 
             with col1:
                 MetricBuilder.build_metric_card(
@@ -104,8 +108,7 @@ class User360Page:
                 )
             
             # Total Queries Executed
-            total_queries_df = DataFetcher.fetch_data(session, "user_360.total_queries_executed", query_params)
-            total_queries = DataProcessor.fetch_metric_value(total_queries_df)
+            total_queries = DataFetcher.fetch_metric_value(session, "user_360.total_queries_executed", query_params)
 
             # No previous period for queries count for now, but could add similar logic
             with col2:
@@ -117,8 +120,7 @@ class User360Page:
                 )
 
             # Average Query Duration
-            avg_query_duration_df = DataFetcher.fetch_data(session, "user_360.avg_query_duration", query_params)
-            avg_query_duration = DataProcessor.fetch_metric_value(avg_query_duration_df)
+            avg_query_duration = DataFetcher.fetch_metric_value(session, "user_360.avg_query_duration", query_params)
 
             with col3:
                 MetricBuilder.build_metric_card(
@@ -235,16 +237,6 @@ class User360Page:
                 hourly_perf_df = DataFetcher.fetch_data(session, "user_360.query_performance_by_hour", query_params)
                 
                 if hourly_perf_df is not None and not hourly_perf_df.empty:
-                    # Prepare data for heatmap
-                    heatmap_data = DataProcessor.pivot_for_heatmap(
-                        hourly_perf_df, 
-                        index_col="QUERY_HOUR", # Using QUERY_HOUR as index now
-                        columns_col="QUERY_HOUR", # This is a dummy for pivot if we want simple table
-                        values_col="AVG_DURATION_SECONDS"
-                    )
-                    # For a single metric like AVG_DURATION, a bar chart might be better
-                    # Let's pivot for AVG_DURATION_SECONDS against hours explicitly for a cleaner bar chart if not heatmap
-                    
                     # For "Query Performance by Hour" a bar chart for average duration is more direct
                     bar_chart_hourly_fig = ChartBuilder.build_bar_chart(
                         hourly_perf_df,
